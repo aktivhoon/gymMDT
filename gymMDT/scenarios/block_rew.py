@@ -115,16 +115,16 @@ class BlockRewardScenario(BaseScenario):
         world.reward_list = []
         world.time += 1
 
-    def reward(self, agent, world):
+    def reward(self, agent):
         return agent.reward
 
-    def observation(self, agent, world):
+    def observation(self, world):
         # Define observation vectors
         obs = {}
         obs['state'] = world.s
         return obs
 
-    def info(self, agent, world):
+    def info(self, world):
         # Information
         info = {}
         info['time'] = world.time
