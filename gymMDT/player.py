@@ -48,7 +48,7 @@ class PlayerAgent(object):
             a2  = trajectory.a2
             a2o = trajectory.a2o
             self.policy_agent.update(s0, a1, a1o, s1, a2, a2o, task_setting)
-        elif self.select_class == 3:
+        elif self.select_class == 2:
             a1 = trajectory.a1
             a1o = trajectory.a1o
             r1 = trajectory.r1
