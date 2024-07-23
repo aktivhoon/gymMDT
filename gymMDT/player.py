@@ -29,6 +29,8 @@ class PlayerAgent(object):
                                          mf_to_mb_bound=mf_to_mb_bound, mb_to_mf_bound=mb_to_mf_bound)
         elif self.select_class == 3:
             self.policy_agent = ScriptedAgent()
+        else:
+            raise ValueError("Invalid select_class")
 
     def action(self, state):
         return self.policy_agent.choose_action(state)
