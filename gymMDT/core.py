@@ -112,8 +112,7 @@ class World(object):
     
     def set_coins(self, settings, coin_color=None):
         if self.reward_code is not None:
-            # check if the reward code is not list
-            if not isinstance(self.reward_code, list):
+            if isinstance(self.reward_code, str) and self.reward_code.lower() == 'glascher':
                 self._set_coins_glascher()
             else:
                 self._set_coins_new(settings, coin_color)
