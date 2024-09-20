@@ -1,6 +1,7 @@
 from importlib.machinery import SourceFileLoader
 import os.path as osp
 
+from gymMDT.scenarios.block_task import BlockTaskEnv
 from gymMDT.scenarios.block_rew import BlockRewardEnv
 from gymMDT.scenarios.glascher import GlascherEnv
 from gymMDT.scenarios.lee import LeeEnv

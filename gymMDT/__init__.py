@@ -1,6 +1,11 @@
 from gym.envs.registration import register
 
 register(
+    id='MDTBlockTask-v0',
+    entry_point='gymMDT.scenarios:BlockTaskEnv',
+)
+
+register(
     id='MDTBlockReward-v0',
     entry_point='gymMDT.scenarios:BlockRewardEnv',
 )
