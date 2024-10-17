@@ -49,7 +49,7 @@ class ArbAgent(BaseAgent):
         self.rpe = 0
         self.spe = 0
 
-    def update(self, s, a, a_o, R, s_next, a_next, a_o_next, R_next):
+    def update(self, s, a, a_o, R, s_next, a_next, a_o_next, R_next, task_setting=None):
         # Model free RPE
         rpe = 0.0
         rpe += abs(R - self.mf_agent.Q[s][a] + self.mf_agent.Q[s_next][a_next])
@@ -62,7 +62,7 @@ class ArbAgent(BaseAgent):
         spe += (1 - self.mb_agent.T[s][a][a_o])
         spe += (1 - self.mb_agent.T[s_next][a_next][a_o_next])
         # Model based agent update
-        self.mb_agent.update(s, a, a_o, s_next, a_next, a_o_next)
+        self.mb_agent.update(s, a, a_o, s_next, a_next, a_o_next, task_setting)
 
         self.rpe = rpe
         self.spe = spe
