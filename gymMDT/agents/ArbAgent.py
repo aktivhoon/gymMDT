@@ -173,14 +173,19 @@ class BayesRelEstimator:
         self.categories = input_categories
 
 class AssocRelEstimator:
-    def __init__(self, lr=0.2, pe_max=30):
+    def __init__(self, lr=0.2, pe_max=40):
         self.chi = 0
         self.lr = lr
         self.pe_max = pe_max
 
     def add_pe(self, pe):
-        delta_chi = self.lr * ((1 - abs(pe) / self.pe_max) - self.chi)
-        self.chi += delta_chi
+        pe_clipped = max(min(pe, self.pe_max), -self.pe_max)
+        # Calculate delta_chi, ensuring it's always in a valid range
+        delta_chi = self.lr * (max(0, 1 - abs(pe_clipped) / self.pe_max) - self.chi)
+        
+        # Update chi, ensuring it stays within [0, 1]
+        self.chi = max(0, min(1, self.chi + delta_chi))
+        
         return self.chi
 
     @property
