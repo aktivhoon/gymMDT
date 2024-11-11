@@ -37,15 +37,8 @@ def gene2block(genotype):
         raise ValueError("genotype must be in range 0-11")
     return taskset
 
-def code2blocks(code):
-    blocks = []
-    for i, genotype in enumerate(code):
-            if i % 4 == 0:
-                block_list = []
-            block_list.append(gene2block(genotype))
-            if i % 4 == 3:
-                blocks.append(block_list)
-    return blocks
+def code2tasks(code):
+    return [gene2block(genotype) for genotype in code]
 
 def make_coin(reward_code, goal_direct=False, coin_color=None):
     reward_patterns = {
@@ -76,7 +69,7 @@ def make_coin(reward_code, goal_direct=False, coin_color=None):
     return coin_list
 
 class BlockTaskScenario(BaseScenario):
-    def make_world(self, code, n_blocks=5):
+    def make_world(self, code, n_blocks=20):
         world = World()
 
         # add agents
@@ -92,7 +85,7 @@ class BlockTaskScenario(BaseScenario):
         world.task_code = code
         world.type = "coins"
 
-        world.block_code = code2blocks(world.task_code)
+        world.tasks = code2tasks(world.task_code)
         world.block_genotypes = 8
         world.n_blocks = n_blocks
 
@@ -104,11 +97,10 @@ class BlockTaskScenario(BaseScenario):
         world.steps = 0
 
         if (world.trials) == 0 or (world.time == 4):
-            #print("BlockScenario - reset_world : ", world.block_idx, world.intra_idx)
             if world.initial_block:
-                world.set_world(world.block_code[world.block_idx][world.intra_idx])
+                world.set_world(world.tasks[world.block_idx])
             elif world.next_block_idx <= world.n_blocks - 1:
-                world.set_world(world.block_code[world.next_block_idx][world.next_intra_idx])
+                world.set_world(world.tasks[world.next_block_idx])
 
         world.action_list = []
         world.state_list = []
@@ -147,7 +139,7 @@ class BlockTaskScenario(BaseScenario):
 
             if world.time == 4:
                 if world.next_block_idx <= world.n_blocks - 1:
-                    info['next_set'] = world.block_code[world.next_block_idx][world.next_intra_idx]
+                    info['next_set'] = world.tasks[world.next_block_idx]
                     if self.compare_set(info['current_set'], info['next_set']):
                         info['setting'] = self.compare_set(info['current_set'], info['next_set'])
                 else:
@@ -172,8 +164,8 @@ class BlockTaskScenario(BaseScenario):
 
 
 class BlockTaskEnv(MDTEnv):
-    def __init__(self, code, n_blocks=5):
-        assert len(code) == 20, 'code must be a list of 20 numbers'
+    def __init__(self, code, n_blocks=20):
+        assert len(code) == n_blocks, f'code must be a list of {n_blocks} numbers ({n_blocks} task codes)'
         assert all(0 <= x <= 11 for x in code), 'all 20 numbers of code must be between 0 and 11'
         
         scenario = BlockTaskScenario()

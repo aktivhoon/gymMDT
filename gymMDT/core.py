@@ -41,7 +41,7 @@ class Coin(object):
             self.name = reward_name_list[idx]
 
 class World(object):
-    def __init__(self, n_blocks=5):
+    def __init__(self, n_blocks=20):
         self.n_blocks = n_blocks
 
         # parameters for world setting
@@ -49,7 +49,7 @@ class World(object):
         self.reward_code = None
         self.task_code = None
         self.code = None
-        self.block_code = None
+        self.tasks = None
         self.block_genotypes = None
 
         # simulation timestep
@@ -58,7 +58,6 @@ class World(object):
         self.time = 0
         self.initial_block = True
         self.block_idx = 0
-        self.intra_idx = 0
 
         self.s = 0
         self.action_list = []
@@ -169,11 +168,7 @@ class World(object):
 
     def _update_indices(self):
         if self.time > 4:
-            if self.intra_idx < 3:
-                self.intra_idx += 1
-            else:
-                self.intra_idx = 0
-                self.block_idx += 1
+            self.block_idx += 1
             self.time = 1
 
     def _set_scripted_agent_actions(self):
@@ -204,12 +199,7 @@ class World(object):
             self._prepare_next_block()
     
     def _prepare_next_block(self):
-        if self.intra_idx < 3:
-            self.next_intra_idx = self.intra_idx + 1
-            self.next_block_idx = self.block_idx
-        else:
-            self.next_intra_idx = 0
-            self.next_block_idx = self.block_idx + 1
+        self.next_block_idx = self.block_idx + 1
         self.initial_block = False
 
     def reset_param(self, initial_block=True):
@@ -217,6 +207,6 @@ class World(object):
         for agent in self.agents:
             agent.reward = 0
         if initial_block:
-            self.set_world(self.block_code[self.block_idx][self.intra_idx])
-        elif self.next_block_idx <= self.n_blocks - 1:
-            self.set_world(self.block_code[self.next_block_idx][self.next_intra_idx])
+            self.set_world(self.tasks[self.block_idx])
+        elif self.next_block_idx < self.n_blocks:
+            self.set_world(self.tasks[self.next_block_idx])
