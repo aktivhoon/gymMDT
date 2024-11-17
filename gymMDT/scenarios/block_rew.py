@@ -40,8 +40,12 @@ def gene2block(genotype):
 def code2tasks(code):
     return [gene2block(genotype) for genotype in code]
 
-def make_coin(reward_code, goal_direct=False, coin_color=None):
-    reward_patterns = {
+def make_reward(reward_code):
+    # Define reward values
+    REWARDS = {0: 0, 1: 10, 2: 20, 3: 40}
+    
+    # Define reward patterns as a constant
+    PATTERNS = {
         0: [1, 1, 0, 3],
         1: [1, 3, 3, 0],
         2: [2, 2, 1, 3],
@@ -53,20 +57,11 @@ def make_coin(reward_code, goal_direct=False, coin_color=None):
         8: [1, 3, 2, 2]
     }
     
-    idx_list = []
-    for code in reward_code:
-        idx_list.extend(reward_patterns[code])
+    # Generate reward indices
+    indices = [idx for code in reward_code for idx in PATTERNS[code]]
     
-    if goal_direct:
-        if coin_color == 'Y':
-            idx_list = [1 if idx == 1 else 0 for idx in idx_list]
-        elif coin_color == 'B':
-            idx_list = [2 if idx == 2 else 0 for idx in idx_list]
-        elif coin_color == 'R':
-            idx_list = [3 if idx == 3 else 0 for idx in idx_list]
-    
-    coin_list = [Coin(idx) for idx in idx_list]
-    return coin_list
+    # Generate reward dictionary for positions 5-20
+    return {pos: REWARDS[idx] for pos, idx in zip(range(5, 21), indices)}
 
 class BlockRewardScenario(BaseScenario):
     def make_world(self, code, n_blocks=20):
@@ -84,6 +79,8 @@ class BlockRewardScenario(BaseScenario):
         world.reward_code = code[:4]
         world.task_code = code[4:]
         world.type = "coins"
+
+        world.reward_D= make_reward(world.reward_code)
 
         world.tasks = code2tasks(world.task_code)
         world.block_genotypes = 8
@@ -121,6 +118,7 @@ class BlockRewardScenario(BaseScenario):
         info = {}
         info['time'] = world.time
         info['steps'] = world.steps
+        info['env_reward'] = world.reward_D
         if world.goal_setting == 'g':
             info['current_set'] = world.goal_setting + world.shift_setting + world.coin_setting
         else:
@@ -140,27 +138,16 @@ class BlockRewardScenario(BaseScenario):
             if world.time == 4:
                 if world.next_block_idx <= world.n_blocks - 1:
                     info['next_set'] = world.tasks[world.next_block_idx]
-                    if self.compare_set(info['current_set'], info['next_set']):
-                        info['setting'] = self.compare_set(info['current_set'], info['next_set'])
+                    # if self.compare_set(info['current_set'], info['next_set']):
+                    #     info['backward_set'] = self.compare_set(info['current_set'], info['next_set'])
                 else:
                     info['next_set'] = 'end'
-
             
         return info
 
     def done(self, world):
         return world.steps > 1
 
-    def compare_set(self, set1, set2):
-        if (set1[0] == set2[0]) & (set1[0] == 'g'):
-            if set1[2] != set2[2]:
-                return set2
-            else:
-                return None
-        elif (set1[0] != set2[0]):
-            return set2
-        else:
-            return None
 
 
 class BlockRewardEnv(MDTEnv):
@@ -177,4 +164,6 @@ class BlockRewardEnv(MDTEnv):
                                         done_callback=scenario.done,
                                         info_callback=scenario.info, shared_viewer=False)
         self.code = code
+        self.task_code = code[4:]
+        self.reward_code = code[:4]
         self.n_blocks = n_blocks

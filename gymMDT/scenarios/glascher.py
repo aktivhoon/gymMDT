@@ -24,6 +24,13 @@ class GlascherScenario(BaseScenario):
         world.code = [['glascher'] * 4] * 5
         world.block_code = world.code
 
+        world.reward_D = {
+            5: 10, 6: 0, 7: 0, 8: 10,
+            9: 0, 10: 10, 11: 0, 12: 25,
+            13: 25, 14: 0, 15: 10, 16: 0,
+            17: 0, 18: 10, 19: 0, 20: 25
+        }
+
         world.type = "coins"
 
         world.n_blocks = 5
@@ -56,6 +63,7 @@ class GlascherScenario(BaseScenario):
         info = {}
         info['time'] = world.time
         info['steps'] = world.steps
+        info['env_reward'] = world.reward_D
         info['current_set'] = world.goal_setting + world.shift_setting
         if world.steps > 1:
             info['trials'] = world.trials
@@ -70,11 +78,8 @@ class GlascherScenario(BaseScenario):
             info['r2'] = world.reward_list[1]
 
             if world.time == 4:
-                #print(world.block_code, world.next_block_idx, world.next_intra_idx)
                 if world.next_block_idx <= world.n_blocks - 1:
-                    info['next_set'] = world.block_code[world.next_block_idx][world.next_intra_idx]
-                    if self.compare_set(info['current_set'], info['next_set']):
-                        info['setting'] = self.compare_set(info['current_set'], info['next_set'])
+                    info['next_set'] = world.goal_setting + world.shift_setting
                 else:
                     info['next_set'] = 'end'
 
@@ -100,6 +105,7 @@ class GlascherEnv(MDTEnv):
         
         scenario = GlascherScenario()
         world = scenario.make_world()
+        self.code = world.code
         super(GlascherEnv, self).__init__(world, reset_callback=scenario.reset_world, 
                                         reward_callback=scenario.reward, 
                                         observation_callback=scenario.observation, 

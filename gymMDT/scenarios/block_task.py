@@ -69,7 +69,7 @@ def make_coin(reward_code, goal_direct=False, coin_color=None):
     return coin_list
 
 class BlockTaskScenario(BaseScenario):
-    def make_world(self, code, n_blocks=20):
+    def make_world(self, task_code, reward_code, n_blocks=20):
         world = World()
 
         # add agents
@@ -80,9 +80,9 @@ class BlockTaskScenario(BaseScenario):
         # player 1 serves as static transition probability
         world.agents[1].action_callback = transition_state
 
-        world.code = code
-        world.reward_code = [8, 8, 3, 8]
-        world.task_code = code
+        world.code = task_code
+        world.reward_code = reward_code
+        world.task_code = task_code
         world.type = "coins"
 
         world.tasks = code2tasks(world.task_code)
@@ -164,12 +164,14 @@ class BlockTaskScenario(BaseScenario):
 
 
 class BlockTaskEnv(MDTEnv):
-    def __init__(self, code, n_blocks=20):
+    def __init__(self, code, reward_code, n_blocks=20):
         assert len(code) == n_blocks, f'code must be a list of {n_blocks} numbers ({n_blocks} task codes)'
+        assert len(reward_code) == 4, 'reward_code must be a list of 4 numbers'
         assert all(0 <= x <= 11 for x in code), 'all 20 numbers of code must be between 0 and 11'
+        assert all(0 <= x <= 8 for x in reward_code), 'all 4 numbers of reward_code must be between 0 and 8'
         
         scenario = BlockTaskScenario()
-        world = scenario.make_world(code, n_blocks)
+        world = scenario.make_world(code, reward_code, n_blocks)
         super(BlockTaskEnv, self).__init__(world, reset_callback=scenario.reset_world, 
                                         reward_callback=scenario.reward, 
                                         observation_callback=scenario.observation, 

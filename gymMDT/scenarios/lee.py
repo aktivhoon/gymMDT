@@ -37,15 +37,8 @@ def gene2block(genotype):
         raise ValueError("genotype must be in range 0-7")
     return taskset
 
-def code2blocks(code):
-    blocks = []
-    for i, genotype in enumerate(code):
-            if i % 4 == 0:
-                block_list = []
-            block_list.append(gene2block(genotype))
-            if i % 4 == 3:
-                blocks.append(block_list)
-    return blocks
+def code2tasks(code):
+    return [gene2block(genotype) for genotype in code]
 
 def make_coin(goal_direct=False, coin_color=None):
     coin_list = []
@@ -76,7 +69,7 @@ CODE_LIST = [
 ]
 
 class LeeScenario(BaseScenario):
-    def make_world(self, code_idx, n_blocks=5):
+    def make_world(self, code_idx, n_blocks=20):
         world = World()
 
         # add agents
@@ -88,12 +81,20 @@ class LeeScenario(BaseScenario):
         world.agents[1].action_callback = transition_state
 
         world.code = CODE_LIST[code_idx]
+        world.task_code = world.code
         world.type = "coins"
 
-        world.block_code = code2blocks(CODE_LIST[code_idx])
+        world.reward_D = {
+            5: 40, 6: 10, 7: 10, 8: 0,
+            9: 10, 10: 0, 11: 20, 12: 0,
+            13: 20, 14: 40, 15: 40, 16: 0,
+            17: 20, 18: 0, 19: 0, 20: 30
+
+        }
+
+        world.tasks = code2tasks(world.task_code)
         world.block_genotypes = 8
         world.n_blocks = n_blocks
-        print(world.block_code)
 
         return world
 
@@ -103,11 +104,10 @@ class LeeScenario(BaseScenario):
         world.steps = 0
 
         if (world.trials) == 0 or (world.time == 4):
-            #print("BlockScenario - reset_world : ", world.block_idx, world.intra_idx)
             if world.initial_block:
-                world.set_world(world.block_code[world.block_idx][world.intra_idx])
+                world.set_world(world.tasks[world.block_idx])
             elif world.next_block_idx <= world.n_blocks - 1:
-                world.set_world(world.block_code[world.next_block_idx][world.next_intra_idx])
+                world.set_world(world.tasks[world.next_block_idx])
 
         world.action_list = []
         world.state_list = []
@@ -128,6 +128,7 @@ class LeeScenario(BaseScenario):
         info = {}
         info['time'] = world.time
         info['steps'] = world.steps
+        info['env_reward'] = world.reward_D
         if world.goal_setting == 'g':
             info['current_set'] = world.goal_setting + world.shift_setting + world.coin_setting
         else:
@@ -146,9 +147,7 @@ class LeeScenario(BaseScenario):
 
             if world.time == 4:
                 if world.next_block_idx <= world.n_blocks - 1:
-                    info['next_set'] = world.block_code[world.next_block_idx][world.next_intra_idx]
-                    if self.compare_set(info['current_set'], info['next_set']):
-                        info['setting'] = self.compare_set(info['current_set'], info['next_set'])
+                    info['next_set'] = world.tasks[world.next_block_idx]
                 else:
                     info['next_set'] = 'end'
 
@@ -171,7 +170,7 @@ class LeeScenario(BaseScenario):
 
 
 class LeeEnv(MDTEnv):
-    def __init__(self, code_idx, n_blocks=5):
+    def __init__(self, code_idx, n_blocks=20):
         assert code_idx >= 0 and code_idx < 10
         scenario = LeeScenario()
         world = scenario.make_world(code_idx, n_blocks)
