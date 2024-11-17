@@ -113,8 +113,10 @@ class World(object):
         if self.reward_code is not None:
             if isinstance(self.reward_code, str) and self.reward_code.lower() == 'glascher':
                 self._set_coins_glascher()
-            else:
-                self._set_coins_new(settings, coin_color)
+            elif len(self.reward_code) == 4:
+                self._set_coins_restrict(settings, coin_color)
+            elif len(self.reward_code) == 16:
+                self._set_coins_general(settings, coin_color)
         else:
             self._set_coins_original(settings, coin_color)
     
@@ -126,7 +128,7 @@ class World(object):
         coins = [None] * 5 + [Coin(idx, handcraft=True, reward_list=reward_list, reward_name_list=reward_name_list) for idx in distrib_list]
         self.place_coins(coins=coins)
 
-    def _set_coins_new(self, settings, coin_color=None):
+    def _set_coins_restrict(self, settings, coin_color=None):
         reward_patterns = {
             0: [1, 1, 0, 3], 1: [1, 3, 3, 0], 2: [2, 2, 1, 3],
             3: [2, 3, 3, 0], 4: [3, 0, 2, 3], 5: [0, 3, 2, 0],
@@ -135,6 +137,20 @@ class World(object):
         
         idx_list = [idx for code in self.reward_code for idx in reward_patterns[code]]
 
+        if 'g' in settings:
+            if coin_color == 'Y':
+                idx_list = [1 if idx == 1 else 0 for idx in idx_list]
+            elif coin_color == 'B':
+                idx_list = [2 if idx == 2 else 0 for idx in idx_list]
+            elif coin_color == 'R':
+                idx_list = [3 if idx == 3 else 0 for idx in idx_list]
+
+        coins = [None] * 5 + [Coin(idx) for idx in idx_list]
+        self.place_coins(coins=coins)
+    
+    def _set_coins_general(self, settings, coin_color=None):
+        idx_list = self.reward_code
+        
         if 'g' in settings:
             if coin_color == 'Y':
                 idx_list = [1 if idx == 1 else 0 for idx in idx_list]
