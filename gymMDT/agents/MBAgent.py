@@ -4,11 +4,10 @@ import os
 import time
 
 class MBAgent(BaseAgent):
-    def __init__(self, env, lr=None, beta=None, variable=True):
+    def __init__(self, lr=None, beta=None, variable=True):
         super(MBAgent, self).__init__()
-        self.env = env
         self.s = 0
-        self.task_setting = None
+        self.backward_set = None
 
         beta_loc = 2.8588
         beta_scale = 4.176
@@ -28,18 +27,46 @@ class MBAgent(BaseAgent):
         # Transition Matrix: T[s][a] -> 2 x 1 transition matrix to visit two different states
         self.T = np.ones((5, 2, 2)) * (1 / 2)
 
-        self.visited_item = {
-                            "zero": False, "yellow":False, "blue": False, "red": False
-                            }
-        self.visited_state = np.zeros(16)
-        self.Q = np.zeros((5, 2))
-        self.env = env
-    
-    def update(self, s, a, a_o, s_next, a_next, a_o_next, task_setting=None):
-        last_state = s_next * 4 + a_next * 2 + a_o_next + 1
-        self.visited_item[self.env.world.states[last_state].item.item_name] = True
-        self.visited_state[last_state-5] = True
+        self.state_list = {'S0': [0], 'S1': [1, 2, 3, 4], 
+                           'S2': [ 5,  6,  7,  8, 
+                                   9, 10, 11, 12, 
+                                  13, 14, 15, 16,
+                                  17, 18, 19, 20]}
 
+        # self.visited_item = {
+        #                     "zero": False, "yellow":False, "blue": False, "red": False
+        #                     }
+        # make a dictionary for visited states, for S2
+        self.visited_state = {i: False for i in range(5, 21)}
+        self.Q = np.zeros((5, 2))
+    
+    def update(self, s, a, a_o, s_next, a_next, a_o_next, env_reward, current_set, next_set):
+        last_state = s_next * 4 + a_next * 2 + a_o_next + 1
+        self.visited_state[last_state] = True
+
+        if next_set is None:
+            next_set = current_set
+            backward_set = None
+        else:
+            backward_set = self.compare_set(current_set, next_set)
+        
+        masked_env_reward = dict(env_reward)
+        
+        if next_set[0] == 'g':
+            target_values = {'Y': 10, 'B': 20, 'R': 40}
+            color_setting = next_set[2]
+            if color_setting in target_values:
+                target = target_values[color_setting]
+                masked_env_reward = {
+                    pos: (val if val == target else 0)
+                    for pos, val in masked_env_reward.items()
+                }
+        
+        # mask the env_reward with the non-visited states
+        for _state in self.state_list['S2']:
+            if not self.visited_state[_state]:
+                masked_env_reward[_state] = 0
+    
         # Forward update: MB is supposed to learn with forward learning on policy.
         self.T[s][a] -= self.lr * self.T[s][a]
         self.T[s][a][a_o] += self.lr
@@ -47,49 +74,54 @@ class MBAgent(BaseAgent):
         self.T[s_next][a_next] -= self.lr * self.T[s_next][a_next]
         self.T[s_next][a_next][a_o_next] += self.lr
 
-        _next_states = self.env.get_next_states(s, a)
-        _next_s = _next_states
+        _next_s = self.get_next_states(s, a)
+        # Q(s, a) = sum(T(s, a) * max_a(Q(s'))) -> No reward
         self.Q[s][a] = np.sum(self.T[s][a] * np.max(self.Q[_next_s], axis=1))
 
-        _next_states = self.env.get_next_states(s_next, a_next)
-        _next_s = _next_states
-        _R = self._get_Reward(s_next, a_next)
-        self.Q[s_next][a_next] = np.sum(self.T[s][a] * _R)
+        _next_s = self.get_next_states(s_next, a_next)
+        _R = [masked_env_reward[_next_s[0]], masked_env_reward[_next_s[1]]]
+        # Q(s', a') = sum(T(s', a') * R(s'')) -> Reward
+        self.Q[s_next][a_next] = np.sum(self.T[s_next][a_next] * _R)
 
-        if task_setting is not None:
-            self.task_setting = task_setting
-            # Backward upate: based on the task setting cue, agent re-evalutes Q-values
+        if backward_set is not None:
+            self.backward_set = backward_set
+            # Backward upate: based on the backward setting cue, agent re-evalutes Q-values
             for _step in np.array(["S1", "S0"]):
-                for _state in self.env.state_list[_step]:
+                for _state in self.state_list[_step]:
                     _s = _state
                     for _action in range(2):
                         if _step == "S1":
-                            _R = self._get_Reward(_state, _action)
+                            _next_s = self.get_next_states(_state, _action)
+                            _R = [masked_env_reward[_next_s[0]], masked_env_reward[_next_s[1]]]
                             self.Q[_state][_action] = np.sum(self.T[_s][_action] * _R)
                         elif _step == "S0":
-                            _next_states = self.env.get_next_states(_state, _action)
-                            _next_s = _next_states
+                            _next_s = self.get_next_states(_state, _action)
                             self.Q[_s][_action] = np.sum(
                                 self.T[_s][_action] * np.max(self.Q[_next_s], axis=1)
                             )
 
         self.policy = softmax(self.Q, self.beta)
-   
-    # function to call the environment reward array: only used for debugging
-    def _print_env_r(self):
-        R_array = np.zeros(16)
-        for s in range(5, 21):
-            R_array[s-5] = self.env.world.states[s].item.reward
-        return R_array
+    
 
-    def _get_Reward(self, state, action):
-        R_array = np.zeros(2)
-        next_states = self.env.get_next_states(state, action)
-        for i, _states in enumerate(next_states):
-            _s = _states
-            _item = self.env.world.states[_s].item
-            if _item is not None and self.visited_state[_s-5]:
-                R_array[i] = _item.reward
+    def get_next_states(self, state, action):
+        """
+                           0
+           1         2            3            4
+        5 6 7 8  9 10 11 12  13 14 15 16  17 18 19 20
+        """
+        if action == 0:
+            return [state * 4 + 1, state * 4 + 2]
+
+        elif action == 1:
+            return [state * 4 + 3, state * 4 + 4]
+    
+    def compare_set(self, set1, set2):
+        if (set1[0] == set2[0]) & (set1[0] == 'g'):
+            if set1[2] != set2[2]:
+                return set2
             else:
-                R_array[i] = 0
-        return R_array
+                return None
+        elif (set1[0] != set2[0]):
+            return set2
+        else:
+            return None
