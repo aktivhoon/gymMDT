@@ -13,7 +13,7 @@ http://dx.doi.org/10.1016/j.neuron.2013.11.028
 """
 
 class ArbAgent(BaseAgent):
-    def __init__(self, env, agent_lr=0.2, beta=0.3,
+    def __init__(self, agent_lr=0.2, beta=0.3,
                  zpe_threshold=0.5, rpe_lr=0.2,
                  mf_rel_estimator=None, mb_rel_estimator=None,
                  amp_mf_to_mb=3, amp_mb_to_mf=1, p_mb=0.8,
@@ -26,7 +26,6 @@ class ArbAgent(BaseAgent):
             self.beta = 0.3
         else:
             self.beta = beta
-        self.env = env
 
         self.mf_rel_estimator = mf_rel_estimator if mf_rel_estimator is not None else AssocRelEstimator(lr=rpe_lr)
         self.mb_rel_estimator = mb_rel_estimator if mb_rel_estimator is not None else BayesRelEstimator(threshold=zpe_threshold)
@@ -42,48 +41,34 @@ class ArbAgent(BaseAgent):
 
         self.p_mb = p_mb
         self.p_mf = 1 - self.p_mb
-        self.mb_agent = MBAgent(self.env, lr=agent_lr, beta=beta)
+        self.mb_agent = MBAgent(lr=agent_lr, beta=beta)
         self.mf_agent = MFAgent(lr=agent_lr, beta=beta)
 
-        # For two-player setting opponent agent
-        self.rpe = 0
-        self.spe = 0
-
-    def update(self, s, a, a_o, R, s_next, a_next, a_o_next, R_next, task_setting=None):
+    def update(self, s, a, a_o, R, s_next, a_next, a_o_next, R_next, env_reward, current_set, next_set):
         # Model free RPE
-        rpe = 0.0
-        rpe += abs(R - self.mf_agent.Q[s][a] + self.mf_agent.Q[s_next][a_next])
-        rpe += abs(R_next - self.mf_agent.Q[s_next][a_next])
+        rpe1 = 0.0
+        rpe2 = 0.0
+        rpe1 = R - self.mf_agent.Q[s][a] + self.mf_agent.Q[s_next][a_next]
+        rpe2 = R_next - self.mf_agent.Q[s_next][a_next]
+
+        # Model based SPE
+        spe1 = 0.0
+        spe2 = 0.0
+        spe1 = (1 - self.mb_agent.T[s][a][a_o])
+        spe2 = (1 - self.mb_agent.T[s_next][a_next][a_o_next])
+
+        self._add_pe(rpe1, spe1)
+        self._add_pe(rpe2, spe2)
+
         # Model free agent update
         self.mf_agent.update(s, a, R, s_next, a_next, R_next)
 
-        # Model based SPE
-        spe = 0.0
-        spe += (1 - self.mb_agent.T[s][a][a_o])
-        spe += (1 - self.mb_agent.T[s_next][a_next][a_o_next])
         # Model based agent update
-        self.mb_agent.update(s, a, a_o, s_next, a_next, a_o_next, task_setting)
-
-        self.rpe = rpe
-        self.spe = spe
-        self._add_pe(rpe, spe)
+        self.mb_agent.update(s, a, a_o, s_next, a_next, a_o_next, env_reward, current_set, next_set)
 
         self.Q = self.p_mb * self.mb_agent.Q + \
                     self.p_mf * self.mf_agent.Q
         self.policy = softmax(self.Q, self.beta)
-
-    def _get_Reward(self, state, action):
-        R_array = np.zeros(2)
-        next_states = self.env.get_next_states(state, action)
-        for i, _states in enumerate(next_states):
-            _s = _states
-            _item = self.env.world.states[_s].item
-            if _item is None:
-                R_array[i] = 0
-            else:
-                R_array[i] = _item.reward
-
-        return R_array
 
     def _add_pe(self, rpe, spe):
         chi_mf = self.mf_rel_estimator.add_pe(rpe)
@@ -179,12 +164,13 @@ class AssocRelEstimator:
         self.pe_max = pe_max
 
     def add_pe(self, pe):
-        pe_clipped = max(min(pe, self.pe_max), -self.pe_max)
-        # Calculate delta_chi, ensuring it's always in a valid range
-        delta_chi = self.lr * (max(0, 1 - abs(pe_clipped) / self.pe_max) - self.chi)
-        
-        # Update chi, ensuring it stays within [0, 1]
-        self.chi = max(0, min(1, self.chi + delta_chi))
+        delta_chi = self.lr * ((1 - abs(pe) / self.pe_max) - self.chi)
+        self.chi += delta_chi
+
+        if self.chi < 0:
+            self.chi = 0
+        elif self.chi > 1:
+            self.chi = 1
         
         return self.chi
 
