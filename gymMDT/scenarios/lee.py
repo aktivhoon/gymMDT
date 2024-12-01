@@ -65,7 +65,8 @@ CODE_LIST = [
     [7, 4, 4, 1, 0, 0, 6, 2, 2, 1, 0, 0, 6, 2, 2, 1, 0, 0, 6, 2],
     [5, 4, 4, 1, 0, 0, 5, 2, 2, 1, 0, 0, 5, 3, 3, 1, 0, 0, 7, 2],
     [5, 2, 2, 1, 0, 0, 7, 3, 3, 1, 0, 0, 6, 4, 4, 1, 0, 0, 7, 4],
-    [6, 4, 4, 1, 0, 0, 6, 2, 2, 1, 0, 0, 5, 3, 3, 1, 0, 0, 7, 3]
+    [6, 4, 4, 1, 0, 0, 6, 2, 2, 1, 0, 0, 5, 3, 3, 1, 0, 0, 7, 3],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] # for pretrain (env_idx = 10)
 ]
 
 class LeeScenario(BaseScenario):
@@ -85,11 +86,10 @@ class LeeScenario(BaseScenario):
         world.type = "coins"
 
         world.reward_D = {
-            5: 40, 6: 10, 7: 10, 8: 0,
-            9: 10, 10: 0, 11: 20, 12: 0,
-            13: 20, 14: 40, 15: 40, 16: 0,
-            17: 20, 18: 0, 19: 0, 20: 30
-
+            5: 'R', 6: 'Y', 7: 'Y', 8: 'Z',
+            9: 'Y', 10: 'Y', 11: 'B', 12: 'Z',
+            13: 'B', 14: 'R', 15: 'R', 16: 'Z',
+            17: 'B', 18: 'Z', 19: 'Z', 20: 'R'
         }
 
         world.tasks = code2tasks(world.task_code)
@@ -100,7 +100,7 @@ class LeeScenario(BaseScenario):
 
     def reset_world(self, world):
         # set random initial states
-        world.s = 0
+        world.curr_state = 0
         world.steps = 0
 
         if (world.trials) == 0 or (world.time == 4):
@@ -120,7 +120,7 @@ class LeeScenario(BaseScenario):
     def observation(self, world):
         # Define observation vectors
         obs = {}
-        obs['state'] = world.s
+        obs['state'] = world.curr_state
         return obs
 
     def info(self, world):
@@ -171,7 +171,7 @@ class LeeScenario(BaseScenario):
 
 class LeeEnv(MDTEnv):
     def __init__(self, code_idx, n_blocks=20):
-        assert code_idx >= 0 and code_idx < 10
+        assert code_idx >= 0 and code_idx < 11
         scenario = LeeScenario()
         world = scenario.make_world(code_idx, n_blocks)
         super(LeeEnv, self).__init__(world, reset_callback=scenario.reset_world, 

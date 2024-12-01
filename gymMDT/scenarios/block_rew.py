@@ -42,7 +42,7 @@ def code2tasks(code):
 
 def make_reward(reward_code):
     # Define reward values
-    REWARDS = {0: 0, 1: 10, 2: 20, 3: 40}
+    REWARDS = {0: 'Z', 1: 'Y', 2: 'B', 3: 'R'}
     
     # Define reward patterns as a constant
     PATTERNS = {
@@ -90,7 +90,7 @@ class BlockRewardScenario(BaseScenario):
 
     def reset_world(self, world):
         # set random initial states
-        world.s = 0
+        world.curr_state = 0
         world.steps = 0
 
         if (world.trials) == 0 or (world.time == 4):
@@ -110,7 +110,7 @@ class BlockRewardScenario(BaseScenario):
     def observation(self, world):
         # Define observation vectors
         obs = {}
-        obs['state'] = world.s
+        obs['state'] = world.curr_state
         return obs
 
     def info(self, world):

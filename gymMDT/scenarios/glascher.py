@@ -39,7 +39,7 @@ class GlascherScenario(BaseScenario):
 
     def reset_world(self, world):
         # set random initial states
-        world.s = 0
+        world.curr_state = 0
         world.steps = 0
 
         world.set_world('glascher')
@@ -55,7 +55,7 @@ class GlascherScenario(BaseScenario):
     def observation(self, world):
         # Define observation vectors
         obs = {}
-        obs['state'] = world.s
+        obs['state'] = world.curr_state
         return obs
 
     def info(self, world):

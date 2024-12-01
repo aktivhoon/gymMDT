@@ -2,18 +2,13 @@ import numpy as np
 
 class Action(object):
     def __init__(self):
-        # physical action
-        self.u = None
+        self.u = None  # physical action
 
 class State(object):
     def __init__(self, idx):
         self.state_number = idx
-        self.item = None
-        self.left = None
-        self.right = None
-        self.up = None
-        self.down = None
-        self.shift = None
+        self.coin = None
+        self.shift = None  # transition probability
 
 class Agent(object):
     def __init__(self, i):
@@ -22,47 +17,49 @@ class Agent(object):
         self.action_callback = None
         self.action = Action()
 
-class Item(object):
-    def __init__(self, reward):
-        self.reward = reward
-        self.item_name = None
 
 class Coin(object):
-    def __init__(self, idx, handcraft = False, reward_list = None, reward_name_list = None):
+    POSSIBLE_REWARDS = [0, 10, 20, 40]
+    COIN_NAMES = ['Z', 'Y', 'B', 'R']
+    
+    def __init__(self, idx, handcraft=False, reward_list=None, name_list=None):
+        idx = int(idx)
         if not handcraft:
-            idx = int(idx)
-            possible_coins = [0, 10, 20, 40]
-            coin_names = ['Z', 'Y', 'B', 'R']
-            self.reward = possible_coins[idx]
-            self.name = coin_names[idx]
+            self.reward = self.POSSIBLE_REWARDS[idx]
+            self.name = self.COIN_NAMES[idx]
         else:
-            idx = int(idx)
             self.reward = reward_list[idx]
-            self.name = reward_name_list[idx]
+            self.name = name_list[idx]
+    
+    def set_reward(self, new_reward):
+        self.reward = new_reward
 
 class World(object):
     def __init__(self, n_blocks=20):
+        # Core attributes
         self.n_blocks = n_blocks
-
-        # parameters for world setting
         self.states = [State(i) for i in range(21)]
+        self.agents = []
+
+        # Block settings
+        self.code = None
         self.reward_code = None
         self.task_code = None
-        self.code = None
         self.tasks = None
         self.block_genotypes = None
 
-        # simulation timestep
-        self.steps = 0
-        self.trials = 0
-        self.time = 0
-        self.initial_block = True
+        # Gamee state
+        self.curr_state = 0
+        self.time = 0 # time within a block (1-4)
+        self.steps = 0 # steps within a block (1-2)
+        self.trials = 0 # total trials
         self.block_idx = 0
+        self.initial_block = True
 
-        self.s = 0
+        # History tracking
         self.action_list = []
         self.state_list = []
-        self.reward = []
+        self.reward_list = []
     
     @property
     def policy_agents(self):
@@ -72,156 +69,163 @@ class World(object):
     def scripted_agents(self):
         return [agent for agent in self.agents if agent.action_callback is not None]
 
-    def place_coins(self, coins):
-        assert len(coins) == 21
-
-        for i, coin in enumerate(coins):
-
-            if coin is None:
-                self.states[i].item = Item(0)
-            else:
-                self.states[i].item = Item(coin.reward)
-                self.states[i].item.item_name = coin.name
-
-    def set_probs(self, shift_val):
-        for sa in range(10):
-            self.states[sa].shift = shift_val
+    def assign_coins_to_states(self, coins):
+        # Assigns coin objects to each state in the world
+        assert len(coins) == 21, "Must provide 21 coins (including None values)"
+        for state, coin in zip(self.states, coins):
+            state.coin = coin if coin else Coin(0)  # Empty spaces get zero-reward coins
+    
+    def set_transition_probabilities(self, probability):
+        # Set the transition probabilities for each state in the world
+        for state in self.states[:10]:
+            state.shift = probability
     
     def set_world(self, task_setting):
-        if task_setting not in ['glascher']:
-            self._set_settings(task_setting)
+        # Sets up the world configuration based on task settings
+        if isinstance(task_setting, str) and task_setting == 'glascher':
+            self._initialize_glascher_config()
         else:
-            self._set_glascher()
-        self.set_coins(self.goal_setting, self.coin_setting)
+            self._initialize_task_config(task_setting)
+        self.initialize_reward_structure(self.goal_setting, self.coin_setting)
     
-    def _set_settings(self, task_setting):
-        self.shift_setting = 'd' if task_setting[1] == 'd' else 'r'
-        shift_val = 0.9 if task_setting[1] == 'd' else 0.5
-        self.set_probs(shift_val)
-
+    def _initialize_task_config(self, task_setting):
+        # Initializes task configuration from settings
+        # Parse task settings
         self.goal_setting = task_setting[0]
-        self.coin_setting = '_' if self.goal_setting == 'f' else task_setting[2]
+        self.shift_setting = task_setting[1]
+        self.coin_setting = '_' if self.goal_setting in ['f', 'a'] else task_setting[2]
         
-    def _set_glascher(self):
+        # Set transition probabilities
+        prob = 0.9 if self.shift_setting == 'd' else 0.5
+        self.set_transition_probabilities(prob)
+        
+    def _initialize_glascher_config(self):
+        # Initializes Glascher-specific configuration
         self.shift_setting = 'm'
-        self.set_probs(0.7)
         self.goal_setting = 'f'
         self.coin_setting = '_'
         self.reward_code = 'glascher'
+        self.set_transition_probabilities(0.7)
     
-    def set_coins(self, settings, coin_color=None):
-        if self.reward_code is not None:
-            if isinstance(self.reward_code, str) and self.reward_code.lower() == 'glascher':
-                self._set_coins_glascher()
-            elif len(self.reward_code) == 4:
-                self._set_coins_restrict(settings, coin_color)
-            elif len(self.reward_code) == 16:
-                self._set_coins_general(settings, coin_color)
+    def initialize_reward_structure(self, settings, target_coin=None):
+        # Initializes the reward structure based on settings and target coin
+        if isinstance(self.reward_code, str) and self.reward_code == 'glascher':
+            self._initialize_glascher_rewards()
         else:
-            self._set_coins_original(settings, coin_color)
+            distribution = self._get_coin_distribution(settings, target_coin)
+            coins = [None] * 5 + [Coin(idx) for idx in distribution]
+            self.assign_coins_to_states(coins)
+        
+        # Apply reward modifications based on settings
+            if settings == 'g' and target_coin in ['Y', 'B', 'R']:
+                self._modify_rewards_for_target(target_coin)
+            elif settings == 'a':
+                self._zero_all_rewards()
+
+    def _initialize_glascher_rewards(self):
+        # Initializes the special Glascher reward structure
+        rewards = [0, 10, 25]
+        names = ['Z', 'L', 'H']
+        distribution = [1, 0, 0, 1, 0, 1, 0, 2, 2, 0, 1, 0, 0, 1, 0, 2]
+        coins = [None] * 5 + [Coin(idx, True, rewards, names) for idx in distribution]
+        self.assign_coins_to_states(coins)
+
+    def _get_coin_distribution(self, settings, target_coin):
+        if isinstance(self.reward_code, str) and self.reward_code == 'glascher':
+            return None
+        elif self.reward_code is None:
+            return self._get_default_distribution(settings, target_coin)
+        elif len(self.reward_code) == 4:
+            return self._get_restricted_distribution(settings, target_coin)
+        elif len(self.reward_code) == 16:
+            return self._get_general_distribution(settings, target_coin)
+            
     
-    def _set_coins_glascher(self):
-        reward_list = [0, 10, 25]
-        reward_name_list = ['Z', 'L', 'H']
-        distrib_list = [1, 0, 0, 1, 0, 1, 0, 2, 2, 0, 1, 0, 0, 1, 0, 2]
-
-        coins = [None] * 5 + [Coin(idx, handcraft=True, reward_list=reward_list, reward_name_list=reward_name_list) for idx in distrib_list]
-        self.place_coins(coins=coins)
-
-    def _set_coins_restrict(self, settings, coin_color=None):
-        reward_patterns = {
+    def _get_restricted_distribution(self, settings, target_coin):
+        PATTERNS = {
             0: [1, 1, 0, 3], 1: [1, 3, 3, 0], 2: [2, 2, 1, 3],
             3: [2, 3, 3, 0], 4: [3, 0, 2, 3], 5: [0, 3, 2, 0],
-            6: [2, 1, 0, 3], 7: [3, 1, 2, 3], 8: [1, 3, 2, 2]
+            6: [2, 1, 0, 3], 7: [3, 1, 2, 3], 8: [1, 3, 2, 2],
+            9: [0, 0, 0, 0]
         }
-        
-        idx_list = [idx for code in self.reward_code for idx in reward_patterns[code]]
+        return [idx for code in self.reward_code for idx in PATTERNS[code]]
 
-        if 'g' in settings:
-            if coin_color == 'Y':
-                idx_list = [1 if idx == 1 else 0 for idx in idx_list]
-            elif coin_color == 'B':
-                idx_list = [2 if idx == 2 else 0 for idx in idx_list]
-            elif coin_color == 'R':
-                idx_list = [3 if idx == 3 else 0 for idx in idx_list]
+    def _get_general_distribution(self, settings, target_coin):
+        return self.reward_code
 
-        coins = [None] * 5 + [Coin(idx) for idx in idx_list]
-        self.place_coins(coins=coins)
-    
-    def _set_coins_general(self, settings, coin_color=None):
-        idx_list = self.reward_code
-        
-        if 'g' in settings:
-            if coin_color == 'Y':
-                idx_list = [1 if idx == 1 else 0 for idx in idx_list]
-            elif coin_color == 'B':
-                idx_list = [2 if idx == 2 else 0 for idx in idx_list]
-            elif coin_color == 'R':
-                idx_list = [3 if idx == 3 else 0 for idx in idx_list]
-
-        coins = [None] * 5 + [Coin(idx) for idx in idx_list]
-        self.place_coins(coins=coins)
-
-    def _set_coins_original(self, settings, coin_color=None):
-        coin_color_map = {
+    def _get_default_distribution(self, settings, target_coin):
+        COIN_MAPS = {
             'Y': [0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             'B': [2, 0, 0, 0, 0, 0, 2, 0, 2, 0, 0, 0, 2, 0, 0, 0],
             'R': [0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 0, 0, 0, 0, 3]
         }
-        default_list = [2, 1, 1, 0, 1, 0, 2, 0, 2, 3, 3, 0, 2, 0, 0, 3]
-        
-        idx_list = coin_color_map.get(coin_color, default_list) if 'g' in settings else default_list
+        return COIN_MAPS.get(target_coin, [2, 1, 1, 0, 1, 0, 2, 0, 2, 3, 3, 0, 2, 0, 0, 3])
 
-        coins = [None] * 5 + [Coin(idx) for idx in idx_list]
-        self.place_coins(coins=coins)
+    def _modify_rewards_for_target(self, target_coin):
+        target_type = {'Y': 1, 'B': 2, 'R': 3}[target_coin]
+        for state in self.states:
+            if state.coin and state.coin.name != 'Z':  # Preserve zero coins
+                if state.coin.name != target_coin:
+                    state.coin.set_reward(0)
 
-    # update state of the world
+    def _zero_all_rewards(self):
+        for state in self.states:
+            if state.coin:
+                state.coin.set_reward(0)
+    
     def step(self):
-        self._update_indices()
-        self._set_scripted_agent_actions()
-        self._apply_actions()
-        self._update_state_and_rewards()
+        # Executes one step in the environment)
+        self._update_time()
+        self._update_actions()
+        self._update_rewards()
 
-    def _update_indices(self):
+    def _update_time(self):
+        # Updates time and block index
         if self.time > 4:
             self.block_idx += 1
             self.time = 1
 
-    def _set_scripted_agent_actions(self):
-        # set actions for scripted agents
+    def _update_actions(self):
+        # Updates agent actions and state
+        # Get scripted agent actions
+        player = self.agents[0]
         for agent in self.scripted_agents:
-            sa = int(self.s * 2 + self.agents[0].action.u)
-            trans_prob = self.states[sa].shift
-            agent.action.u = agent.action_callback(trans_prob)
-    
-    def _apply_actions(self):
+            state_action = int(self.curr_state * 2 + player.action.u)
+            agent.action.u = agent.action_callback(self.states[state_action].shift)
+
+        # Update state based on actions
         actions = [int(agent.action.u) for agent in self.agents]
         action_pair = actions[0] * 2 + actions[1]
-        self.s = self.s * 4 + action_pair + 1
-        self.action_list.append(actions)
-        self.state_list.append(self.s)
-    
-    def _update_state_and_rewards(self):
-        if self.states[self.s].item is not None:
-            self.agents[0].reward = self.states[self.s].item.reward
+        self.curr_state = self.curr_state * 4 + action_pair + 1
         
-        self.reward_list.append(self.agents[0].reward)
+        # Record history
+        self.action_list.append(actions)
+        self.state_list.append(self.curr_state)
 
+    def _update_rewards(self):
+        # Updates rewards and game progression
+        curr_state = self.states[self.curr_state]
+        player = self.agents[0]
+        
+        # Update rewards
+        player.reward = curr_state.coin.reward if curr_state.coin else 0
+        self.reward_list.append(player.reward)
+        
+        # Update counters
         self.steps += 1
         if self.steps > 1:
             self.trials += 1
-
+        
         if self.time == 4:
-            self._prepare_next_block()
-    
-    def _prepare_next_block(self):
-        self.next_block_idx = self.block_idx + 1
-        self.initial_block = False
+            self.next_block_idx = self.block_idx + 1
+            self.initial_block = False
 
     def reset_param(self, initial_block=True):
-        self.s = 0
+        # Resets parameters for new block
+        self.curr_state = 0
         for agent in self.agents:
             agent.reward = 0
+            
         if initial_block:
             self.set_world(self.tasks[self.block_idx])
         elif self.next_block_idx < self.n_blocks:
