@@ -33,75 +33,85 @@ class MBAgent(BaseAgent):
                                   13, 14, 15, 16,
                                   17, 18, 19, 20]}
 
-        # self.visited_item = {
-        #                     "zero": False, "yellow":False, "blue": False, "red": False
-        #                     }
+        self.reward_map = {i : 'Z' for i in range(5, 21)}
+
         # make a dictionary for visited states, for S2
         self.visited_state = {i: False for i in range(5, 21)}
         self.Q = np.zeros((5, 2))
+
+        self.target_values = {'Y': 10, 'B': 20, 'R': 40}
     
     def update(self, s, a, a_o, s_next, a_next, a_o_next, env_reward, current_set, next_set):
-        last_state = s_next * 4 + a_next * 2 + a_o_next + 1
+        # Update state tracking
+        last_state = self._calculate_last_state(s_next, a_next, a_o_next)
         self.visited_state[last_state] = True
 
-        if next_set is None:
-            next_set = current_set
-            backward_set = None
-        else:
-            backward_set = self.compare_set(current_set, next_set)
+        next_set, backward_set = self._handle_sets(current_set, next_set)
+        self._update_rewards(env_reward, last_state)
         
-        masked_env_reward = dict(env_reward)
-        
-        if next_set[0] == 'g':
-            target_values = {'Y': 10, 'B': 20, 'R': 40}
-            color_setting = next_set[2]
-            if color_setting in target_values:
-                target = target_values[color_setting]
-                masked_env_reward = {
-                    pos: (val if val == target else 0)
-                    for pos, val in masked_env_reward.items()
-                }
-        
-        # mask the env_reward with the non-visited states
-        for _state in self.state_list['S2']:
-            if not self.visited_state[_state]:
-                masked_env_reward[_state] = 0
-    
-        # Forward update: MB is supposed to learn with forward learning on policy.
-        self.T[s][a] -= self.lr * self.T[s][a]
-        self.T[s][a][a_o] += self.lr
-
-        self.T[s_next][a_next] -= self.lr * self.T[s_next][a_next]
-        self.T[s_next][a_next][a_o_next] += self.lr
-
-        _next_s = self.get_next_states(s, a)
-        # Q(s, a) = sum(T(s, a) * max_a(Q(s'))) -> No reward
-        self.Q[s][a] = np.sum(self.T[s][a] * np.max(self.Q[_next_s], axis=1))
-
-        _next_s = self.get_next_states(s_next, a_next)
-        _R = [masked_env_reward[_next_s[0]], masked_env_reward[_next_s[1]]]
-        # Q(s', a') = sum(T(s', a') * R(s'')) -> Reward
-        self.Q[s_next][a_next] = np.sum(self.T[s_next][a_next] * _R)
+        self._update_transition_probabilities(s, a, a_o, s_next, a_next, a_o_next)
+        self._update_q_values_forward(s, a, s_next, a_next, next_set)
 
         if backward_set is not None:
-            self.backward_set = backward_set
-            # Backward upate: based on the backward setting cue, agent re-evalutes Q-values
-            for _step in np.array(["S1", "S0"]):
-                for _state in self.state_list[_step]:
-                    _s = _state
-                    for _action in range(2):
-                        if _step == "S1":
-                            _next_s = self.get_next_states(_state, _action)
-                            _R = [masked_env_reward[_next_s[0]], masked_env_reward[_next_s[1]]]
-                            self.Q[_state][_action] = np.sum(self.T[_s][_action] * _R)
-                        elif _step == "S0":
-                            _next_s = self.get_next_states(_state, _action)
-                            self.Q[_s][_action] = np.sum(
-                                self.T[_s][_action] * np.max(self.Q[_next_s], axis=1)
-                            )
-
+            self._update_q_values_backward(backward_set)
+        
         self.policy = softmax(self.Q, self.beta)
     
+    def _calculate_last_state(self, s_next, a_next, a_o_next):
+        return s_next * 4 + a_next * 2 + a_o_next + 1
+
+    def _handle_sets(self, current_set, next_set):
+        if next_set is None:
+            next_set = current_set
+            return next_set, None
+        return next_set, self.compare_set(current_set, next_set)
+    
+    def _update_rewards(self, env_reward, last_state):
+        masked_rewards = dict(env_reward)
+        for state in self.state_list['S2']:
+            if not self.visited_state[state]:
+                masked_rewards[state] = 'Z'
+        last_state_coin = masked_rewards[last_state]
+        self.reward_map[last_state] = last_state_coin
+
+    def _update_transition_probabilities(self, s, a, a_o, s_next, a_next, a_o_next):
+        self.T[s][a] -= self.lr * self.T[s][a]
+        self.T[s][a][a_o] += self.lr
+        
+        self.T[s_next][a_next] -= self.lr * self.T[s_next][a_next]
+        self.T[s_next][a_next][a_o_next] += self.lr
+    
+    def _calculate_rewards(self, next_states, set_info):
+        if set_info[0] == 'g':
+            target_coin = set_info[2]
+            target_value = self.target_values.get(target_coin, 0)
+            return np.array([target_value if self.reward_map[state] == target_coin else 0 
+                           for state in next_states])
+        return np.array([self.target_values.get(self.reward_map[state], 0) for state in next_states])
+
+    def _update_q_values_forward(self, s, a, s_next, a_next, next_set):
+        next_states = self.get_next_states(s, a)
+        self.Q[s][a] = np.sum(self.T[s][a] * np.max(self.Q[next_states], axis=1))
+        
+        next_states = self.get_next_states(s_next, a_next)
+        rewards = self._calculate_rewards(next_states, next_set)
+        self.Q[s_next][a_next] = np.sum(self.T[s_next][a_next] * rewards)
+    
+    def _update_q_values_backward(self, backward_set):
+        self.backward_set = backward_set
+        
+        for step in ["S1", "S0"]:
+            for state in self.state_list[step]:
+                for action in range(2):
+                    next_states = self.get_next_states(state, action)
+                    
+                    if step == "S1":
+                        rewards = self._calculate_rewards(next_states, backward_set)
+                        self.Q[state][action] = np.sum(self.T[state][action] * rewards)
+                    else:  # S0
+                        self.Q[state][action] = np.sum(
+                            self.T[state][action] * np.max(self.Q[next_states], axis=1)
+                        )
 
     def get_next_states(self, state, action):
         """
